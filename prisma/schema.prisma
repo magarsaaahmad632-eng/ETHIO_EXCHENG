@@ -1,0 +1,234 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id               String            @id @default(uuid())
+  telegramId       String            @unique
+  username         String?
+  firstName        String?
+  lastName         String?
+  role             String            @default("USER") // "USER" or "ADMIN"
+  balanceUsdt      Float             @default(0.0)
+  reservedUsdt     Float             @default(0.0)
+  balanceEtb       Float             @default(0.0)
+  reservedEtb      Float             @default(0.0)
+  kycStatus        String            @default("NONE") // "NONE", "PENDING", "APPROVED", "REJECTED"
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  sessions         Session[]
+  kycSubmissions   KycSubmission[]
+  depositRequests  DepositRequest[]
+  withdrawals      WithdrawalRequest[]
+  ads              Advertisement[]
+  buyOrders        Order[]           @relation("BuyerOrders")
+  sellOrders       Order[]           @relation("SellerOrders")
+  ledgerEntries    LedgerTransaction[]
+  notifications    Notification[]
+  disputesOpened   Dispute[]         @relation("DisputeOpener")
+  disputeMessages  DisputeMessage[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CaptchaChallenge {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  answer    String
+  solved    Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model KycSubmission {
+  id           String    @id @default(uuid())
+  userId       String
+  fullName     String
+  phoneNumber  String
+  idType       String    // "NATIONAL_ID", "PASSPORT", "DRIVERS_LICENSE"
+  idNumber     String
+  frontPhoto   String
+  backPhoto    String?
+  selfiePhoto  String
+  status       String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  rejectReason String?
+  submittedAt  DateTime  @default(now())
+  reviewedAt   DateTime?
+  reviewedBy   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DepositAccount {
+  id            String   @id @default(uuid())
+  asset         String   // "ETB" or "USDT"
+  providerName  String   // e.g., "Telebirr", "CBE Bank", "Awash Bank", "TRC20"
+  accountNumber String
+  accountName   String
+  instructions  String?
+  active        Boolean  @default(true)
+  minLimit      Float    @default(1.0)
+  maxLimit      Float    @default(100000.0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  requests DepositRequest[]
+}
+
+model DepositRequest {
+  id                     String          @id @default(uuid())
+  userId                 String
+  asset                  String          // "ETB" or "USDT"
+  providerName           String
+  amount                 Float
+  depositAccountId       String?
+  paymentAccountSnapshot String?         // JSON snapshot of account details when request was created
+  proofPhoto             String?
+  refNumber              String?
+  status                 String          @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  rejectReason           String?
+  createdAt              DateTime        @default(now())
+  processedAt            DateTime?
+  processedBy            String?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  depositAccount DepositAccount? @relation(fields: [depositAccountId], references: [id])
+}
+
+model WithdrawalRequest {
+  id                 String    @id @default(uuid())
+  userId             String
+  asset              String    // "USDT" or "ETB"
+  amount             Float
+  destinationAddress String
+  status             String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  rejectReason       String?
+  createdAt          DateTime  @default(now())
+  processedAt        DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Advertisement {
+  id             String   @id @default(uuid())
+  userId         String
+  type           String   // "BUY" or "SELL"
+  cryptoAsset    String   @default("USDT")
+  fiatCurrency   String   @default("ETB")
+  price          Float    // Rate in ETB per 1 USDT
+  minLimit       Float    // Min USDT amount per order
+  maxLimit       Float    // Max USDT amount per order
+  paymentMethods String   // JSON array string e.g. ["Telebirr", "CBE"]
+  active         Boolean  @default(true)
+  terms          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[]
+}
+
+model Order {
+  id              String    @id @default(uuid())
+  advertisementId String
+  buyerId         String
+  sellerId        String
+  cryptoAmount    Float     // Amount in USDT
+  fiatAmount      Float     // Amount in ETB
+  price           Float     // Rate at time of order
+  paymentMethod   String
+  status          String    @default("PENDING_PAYMENT") // "PENDING_PAYMENT", "PAID", "COMPLETED", "CANCELLED", "DISPUTED", "EXPIRED"
+  proofPhoto      String?
+  paymentRef      String?
+  expiresAt       DateTime
+  createdAt       DateTime  @default(now())
+  paidAt          DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+
+  advertisement Advertisement @relation(fields: [advertisementId], references: [id])
+  buyer         User          @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller        User          @relation("SellerOrders", fields: [sellerId], references: [id])
+  dispute       Dispute?
+}
+
+model Dispute {
+  id          String    @id @default(uuid())
+  orderId     String    @unique
+  openedById  String
+  status      String    @default("OPEN") // "OPEN", "RESOLVED_BUYER", "RESOLVED_SELLER"
+  reason      String
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+
+  order    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  openedBy User             @relation("DisputeOpener", fields: [openedById], references: [id])
+  messages DisputeMessage[]
+}
+
+model DisputeMessage {
+  id         String   @id @default(uuid())
+  disputeId  String
+  senderId   String
+  senderRole String   // "BUYER", "SELLER", "ADMIN"
+  message    String
+  attachment String?
+  createdAt  DateTime @default(now())
+
+  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  sender  User    @relation(fields: [senderId], references: [id])
+}
+
+model LedgerTransaction {
+  id             String   @id @default(uuid())
+  userId         String
+  asset          String   @default("USDT") // "USDT" or "ETB"
+  type           String   // "DEPOSIT", "WITHDRAWAL", "ESCROW_LOCK", "ESCROW_RELEASE", "ESCROW_REFUND", "FEE", "ADMIN_ADJUSTMENT", "EXCHANGE"
+  amount         Float
+  balanceBefore  Float
+  balanceAfter   Float
+  reservedBefore Float
+  reservedAfter  Float
+  referenceId    String?  // Order ID, Deposit ID, etc.
+  description    String
+  createdAt      DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("INFO") // "INFO", "ORDER", "KYC", "DEPOSIT", "DISPUTE"
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  action    String
+  targetId  String?
+  details   String   // JSON string
+  ipAddress String?
+  createdAt DateTime @default(now())
+}

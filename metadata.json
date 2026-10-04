@@ -1,0 +1,6 @@
+{
+  "name": "ETHIO EXCHANGE - P2P Crypto Marketplace",
+  "description": "Telegram Mini App P2P Crypto Exchange for ETB & USDT with immutable wallet ledger, instant escrow, KYC, and admin settlement.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
