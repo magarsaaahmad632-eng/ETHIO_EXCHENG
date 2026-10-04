@@ -1,1 +1,1 @@
-@ethio-exchange 
+@ethio-exchange-miniapp
