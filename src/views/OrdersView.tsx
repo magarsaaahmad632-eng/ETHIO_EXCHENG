@@ -5,6 +5,7 @@ import {
   ShoppingBag,
   Clock,
   CheckCircle2,
+  XCircle,
   AlertTriangle,
   Upload,
   Lock,
@@ -29,6 +30,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 }) => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
+  const [activeTabFilter, setActiveTabFilter] = useState<'ALL' | 'PENDING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'REJECTED'>('ALL');
   const [loading, setLoading] = useState(false);
 
   // Payment Proof Modal
@@ -165,13 +167,22 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     }
   };
 
+  const filteredOrders = orders.filter((ord) => {
+    if (activeTabFilter === 'ALL') return true;
+    if (activeTabFilter === 'PENDING') return ['CREATED', 'PAYMENT_PENDING'].includes(ord.status);
+    if (activeTabFilter === 'ACTIVE') return ['PAYMENT_SUBMITTED', 'PAYMENT_CONFIRMED', 'RELEASE_PENDING', 'DISPUTED'].includes(ord.status);
+    if (activeTabFilter === 'COMPLETED') return ord.status === 'COMPLETED';
+    if (activeTabFilter === 'CANCELLED') return ord.status === 'CANCELLED' || ord.status === 'EXPIRED';
+    if (activeTabFilter === 'REJECTED') return ord.status === 'REJECTED';
+    return true;
+  });
+
   if (activeOrder) {
     const isBuyer = activeOrder.buyerId === user?.id;
     const isSeller = activeOrder.sellerId === user?.id;
-    const counterparty = isBuyer ? activeOrder.seller : activeOrder.buyer;
 
     return (
-      <div className="space-y-4 pb-20">
+      <div className="space-y-4 pb-20 max-w-md mx-auto">
         <div className="flex items-center justify-between">
           <button
             onClick={() => {
@@ -180,7 +191,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             }}
             className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1"
           >
-            ← Back to Orders
+            ← Back to My Orders
           </button>
           <span className="text-[10px] font-mono text-slate-500">Order #{activeOrder.id.substring(0, 8)}</span>
         </div>
@@ -195,21 +206,40 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         {/* Order Status Banner */}
         <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Order Escrow Status</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Escrow Status</span>
             <span
-              className={`px-2.5 py-1 rounded-full text-xs font-black ${
+              className={`px-2.5 py-1 rounded-full text-xs font-extrabold flex items-center gap-1 ${
                 activeOrder.status === 'COMPLETED'
                   ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                  : activeOrder.status === 'PAID'
+                  : activeOrder.status === 'REJECTED'
+                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  : activeOrder.status === 'PAYMENT_SUBMITTED' || activeOrder.status === 'PAYMENT_CONFIRMED'
                   ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                   : activeOrder.status === 'DISPUTED'
                   ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                   : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
               }`}
             >
-              {activeOrder.status}
+              {activeOrder.status === 'COMPLETED' ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" /> ✓ Approved / Completed
+                </>
+              ) : activeOrder.status === 'REJECTED' ? (
+                <>
+                  <XCircle className="w-3.5 h-3.5" /> ✕ Rejected
+                </>
+              ) : (
+                activeOrder.status
+              )}
             </span>
           </div>
+
+          {activeOrder.status === 'REJECTED' && activeOrder.rejectionReason && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+              <strong className="block font-bold">Rejection Reason:</strong>
+              {activeOrder.rejectionReason}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs">
             <div>
@@ -227,9 +257,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
             <span>Payment Method: <strong className="text-slate-200">{activeOrder.paymentMethod}</strong></span>
           </div>
 
-          {/* Action Buttons for Buyer/Seller */}
+          {/* Action Buttons */}
           <div className="space-y-2 pt-2 border-t border-slate-800">
-            {isBuyer && activeOrder.status === 'PENDING_PAYMENT' && (
+            {isBuyer && (activeOrder.status === 'CREATED' || activeOrder.status === 'PAYMENT_PENDING') && (
               <button
                 onClick={() => setShowPayModal(true)}
                 className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-emerald-950/40"
@@ -238,7 +268,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               </button>
             )}
 
-            {isSeller && (activeOrder.status === 'PAID' || activeOrder.status === 'DISPUTED') && (
+            {isSeller && (activeOrder.status === 'PAYMENT_SUBMITTED' || activeOrder.status === 'PAYMENT_CONFIRMED' || activeOrder.status === 'RELEASE_PENDING' || activeOrder.status === 'DISPUTED') && (
               <button
                 onClick={handleReleaseCrypto}
                 className="w-full py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold text-sm shadow-lg shadow-emerald-950/40"
@@ -247,7 +277,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               </button>
             )}
 
-            {activeOrder.status !== 'COMPLETED' && activeOrder.status !== 'CANCELLED' && !activeOrder.dispute && (
+            {activeOrder.status !== 'COMPLETED' && activeOrder.status !== 'CANCELLED' && activeOrder.status !== 'REJECTED' && !activeOrder.dispute && (
               <button
                 onClick={() => setShowDisputeModal(true)}
                 className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-bold text-xs border border-rose-500/30 flex items-center justify-center gap-1"
@@ -394,7 +424,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="space-y-4 pb-20 max-w-md mx-auto">
       <div className="flex items-center justify-between">
         <h3 className="font-extrabold text-base text-white">My P2P Orders</h3>
         <button onClick={fetchOrders} className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">
@@ -402,17 +432,34 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         </button>
       </div>
 
+      {/* User Tabs */}
+      <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+        {(['ALL', 'PENDING', 'ACTIVE', 'COMPLETED', 'CANCELLED', 'REJECTED'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTabFilter(tab)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
+              activeTabFilter === tab
+                ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-950/30'
+                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200'
+            }`}
+          >
+            {tab === 'COMPLETED' ? 'Approved' : tab}
+          </button>
+        ))}
+      </div>
+
       {loading ? (
         <div className="text-center py-10 text-slate-500 text-xs">Loading orders...</div>
-      ) : orders.length === 0 ? (
+      ) : filteredOrders.length === 0 ? (
         <div className="text-center py-12 bg-slate-900/40 rounded-2xl border border-slate-800 p-6 space-y-2">
           <ShoppingBag className="w-10 h-10 text-slate-600 mx-auto" />
-          <p className="text-sm font-bold text-slate-300">No Orders Active</p>
+          <p className="text-sm font-bold text-slate-300">No Orders Found</p>
           <p className="text-xs text-slate-500">Go to P2P Market to initiate a trade!</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {orders.map((ord) => {
+          {filteredOrders.map((ord) => {
             const isBuyer = ord.buyerId === user?.id;
             return (
               <div
@@ -435,19 +482,35 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                   </div>
 
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
                       ord.status === 'COMPLETED'
-                        ? 'bg-emerald-500/20 text-emerald-400'
-                        : ord.status === 'PAID'
+                        ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                        : ord.status === 'REJECTED'
+                        ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                        : ord.status === 'PAYMENT_SUBMITTED' || ord.status === 'PAYMENT_CONFIRMED'
                         ? 'bg-blue-500/20 text-blue-400'
                         : ord.status === 'DISPUTED'
                         ? 'bg-rose-500/20 text-rose-400'
                         : 'bg-amber-500/20 text-amber-400'
                     }`}
                   >
-                    {ord.status}
+                    {ord.status === 'COMPLETED' ? (
+                      <>
+                        <CheckCircle2 className="w-3 h-3" /> Approved
+                      </>
+                    ) : ord.status === 'REJECTED' ? (
+                      <>
+                        <XCircle className="w-3 h-3" /> Rejected
+                      </>
+                    ) : (
+                      ord.status
+                    )}
                   </span>
                 </div>
+
+                {ord.status === 'REJECTED' && ord.rejectionReason && (
+                  <p className="text-[11px] text-rose-300/90 font-medium">Reason: {ord.rejectionReason}</p>
+                )}
 
                 <div className="flex items-center justify-between text-xs text-slate-400 pt-1 border-t border-slate-800/60">
                   <span>Total: <strong className="text-white">{ord.fiatAmount.toFixed(2)} ETB</strong></span>

@@ -5,7 +5,9 @@ export interface User {
   firstName?: string | null;
   lastName?: string | null;
   role: 'USER' | 'ADMIN';
+  accountStatus: 'ACTIVE' | 'BANNED' | 'SUSPENDED';
   kycStatus: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  lastActiveAt?: string;
   createdAt: string;
 }
 
@@ -53,6 +55,7 @@ export interface KycSubmission {
   rejectReason?: string | null;
   submittedAt: string;
   reviewedAt?: string | null;
+  reviewedBy?: string | null;
   user?: Partial<User>;
 }
 
@@ -94,7 +97,8 @@ export interface Advertisement {
   price: number;
   minLimit: number;
   maxLimit: number;
-  paymentMethods: string; // JSON array string
+  paymentMethods: string;
+  cryptoMethods?: string;
   active: boolean;
   terms?: string | null;
   createdAt: string;
@@ -110,9 +114,22 @@ export interface Order {
   fiatAmount: number;
   price: number;
   paymentMethod: string;
-  status: 'PENDING_PAYMENT' | 'PAID' | 'COMPLETED' | 'CANCELLED' | 'DISPUTED' | 'EXPIRED';
+  status:
+    | 'CREATED'
+    | 'PAYMENT_PENDING'
+    | 'PAYMENT_SUBMITTED'
+    | 'PAYMENT_CONFIRMED'
+    | 'RELEASE_PENDING'
+    | 'COMPLETED'
+    | 'CANCELLED'
+    | 'REJECTED'
+    | 'EXPIRED'
+    | 'DISPUTED';
   proofPhoto?: string | null;
   paymentRef?: string | null;
+  rejectionReason?: string | null;
+  rejectedBy?: string | null;
+  rejectedAt?: string | null;
   expiresAt: string;
   createdAt: string;
   paidAt?: string | null;
@@ -167,6 +184,8 @@ export interface AdminStats {
   openDisputes: number;
   totalBalanceUsdt: number;
   totalReservedUsdt: number;
+  totalBalanceEtb: number;
+  totalReservedEtb: number;
 }
 
 export interface AuditLog {

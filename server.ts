@@ -12,14 +12,17 @@ import orderRoutes from './src/routes/orders.js';
 import disputeRoutes from './src/routes/disputes.js';
 import notificationRoutes from './src/routes/notifications.js';
 import adminRoutes from './src/routes/admin.js';
+import exchangeRoutes from './src/routes/exchange.js';
 import { prisma } from './src/lib/prisma.js';
+import { formatStartMessage } from './src/lib/botNotifications.js';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// CORS configuration defaulting to '*' if CORS_ORIGIN is not provided
+app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -40,9 +43,38 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/disputes', disputeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/exchange', exchangeRoutes);
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'ETHIO EXCHANGE API', timestamp: new Date().toISOString() });
+app.get('/api/health', (req, res) => {
+  const hostUrl = `${req.protocol}://${req.headers.host}`;
+  res.json({
+    status: 'ok',
+    service: 'ETHIO EXCHANGE API',
+    webAppUrl: process.env.WEBAPP_URL || process.env.APP_URL || hostUrl,
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Telegram Bot Webhook endpoint with dynamic URL detection
+app.post('/api/bot/webhook', (req, res) => {
+  const update = req.body;
+  const computedAppUrl = process.env.WEBAPP_URL || process.env.APP_URL || `${req.protocol}://${req.headers.host}`;
+
+  if (update?.message?.text === '/start') {
+    const startMsg = formatStartMessage();
+    res.json({
+      method: 'sendMessage',
+      chat_id: update.message.chat.id,
+      text: startMsg,
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: '🚀 OPEN ETHIO EXCHANGE', web_app: { url: computedAppUrl } }],
+        ],
+      },
+    });
+    return;
+  }
+  res.json({ ok: true });
 });
 
 async function seedDefaultData() {
@@ -81,6 +113,22 @@ async function seedDefaultData() {
         ],
       });
       console.log('Seeded default admin payment accounts');
+    }
+
+    // Seed default settings
+    const existingSettings = await prisma.setting.count();
+    if (existingSettings === 0) {
+      await prisma.setting.createMany({
+        data: [
+          { key: 'p2p_fee_rate', value: '0.01' },
+          { key: 'deposit_fee_rate', value: '0.00' },
+          { key: 'exchange_rate_etb_usdt', value: '135.50' },
+          { key: 'min_order_usdt', value: '5.0' },
+          { key: 'max_order_usdt', value: '50000.0' },
+          { key: 'maintenance_mode', value: 'false' },
+        ],
+      });
+      console.log('Seeded default database settings');
     }
   } catch (err) {
     console.error('Error seeding initial data:', err);

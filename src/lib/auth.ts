@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { prisma } from './prisma.js';
 
-export const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || '7891606253';
+export const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_ID || process.env.ADMIN_ID || '7891606253';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -12,6 +12,7 @@ export interface AuthenticatedRequest extends Request {
     firstName?: string | null;
     lastName?: string | null;
     role: string;
+    accountStatus: string;
     kycStatus: string;
   };
   sessionToken?: string;
@@ -54,6 +55,19 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
       return res.status(401).json({ error: 'Unauthorized: Session expired' });
     }
 
+    // Check account status
+    if (session.user.accountStatus === 'BANNED' || session.user.accountStatus === 'SUSPENDED') {
+      return res.status(403).json({
+        error: `Forbidden: Your account is currently ${session.user.accountStatus.toLowerCase()}. Please contact support.`,
+      });
+    }
+
+    // Update lastActiveAt in background
+    prisma.user.update({
+      where: { id: session.user.id },
+      data: { lastActiveAt: new Date() },
+    }).catch(() => {});
+
     req.user = {
       id: session.user.id,
       telegramId: session.user.telegramId,
@@ -61,6 +75,7 @@ export async function authenticateToken(req: AuthenticatedRequest, res: Response
       firstName: session.user.firstName,
       lastName: session.user.lastName,
       role: session.user.role,
+      accountStatus: session.user.accountStatus,
       kycStatus: session.user.kycStatus,
     };
     req.sessionToken = token;
@@ -80,7 +95,7 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
   const isAdmin = req.user.role === 'ADMIN' || req.user.telegramId === ADMIN_TELEGRAM_ID;
 
   if (!isAdmin) {
-    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    return res.status(403).json({ error: 'Forbidden: Server-side admin authorization required' });
   }
 
   next();

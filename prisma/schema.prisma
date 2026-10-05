@@ -14,11 +14,13 @@ model User {
   firstName        String?
   lastName         String?
   role             String            @default("USER") // "USER" or "ADMIN"
+  accountStatus    String            @default("ACTIVE") // "ACTIVE", "BANNED", "SUSPENDED"
   balanceUsdt      Float             @default(0.0)
   reservedUsdt     Float             @default(0.0)
   balanceEtb       Float             @default(0.0)
   reservedEtb      Float             @default(0.0)
   kycStatus        String            @default("NONE") // "NONE", "PENDING", "APPROVED", "REJECTED"
+  lastActiveAt     DateTime          @default(now())
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -33,6 +35,7 @@ model User {
   notifications    Notification[]
   disputesOpened   Dispute[]         @relation("DisputeOpener")
   disputeMessages  DisputeMessage[]
+  orderEvents      OrderEvent[]
 }
 
 model Session {
@@ -133,6 +136,7 @@ model Advertisement {
   minLimit       Float    // Min USDT amount per order
   maxLimit       Float    // Max USDT amount per order
   paymentMethods String   // JSON array string e.g. ["Telebirr", "CBE"]
+  cryptoMethods  String   @default("[\"TRC20\"]") // JSON array string e.g. ["TRC20", "Binance Pay"]
   active         Boolean  @default(true)
   terms          String?
   createdAt      DateTime @default(now())
@@ -151,9 +155,12 @@ model Order {
   fiatAmount      Float     // Amount in ETB
   price           Float     // Rate at time of order
   paymentMethod   String
-  status          String    @default("PENDING_PAYMENT") // "PENDING_PAYMENT", "PAID", "COMPLETED", "CANCELLED", "DISPUTED", "EXPIRED"
+  status          String    @default("CREATED") // "CREATED", "PAYMENT_PENDING", "PAYMENT_SUBMITTED", "PAYMENT_CONFIRMED", "RELEASE_PENDING", "COMPLETED", "DISPUTED", "CANCELLED", "REJECTED", "EXPIRED"
   proofPhoto      String?
   paymentRef      String?
+  rejectionReason String?
+  rejectedBy      String?
+  rejectedAt      DateTime?
   expiresAt       DateTime
   createdAt       DateTime  @default(now())
   paidAt          DateTime?
@@ -164,6 +171,20 @@ model Order {
   buyer         User          @relation("BuyerOrders", fields: [buyerId], references: [id])
   seller        User          @relation("SellerOrders", fields: [sellerId], references: [id])
   dispute       Dispute?
+  events        OrderEvent[]
+}
+
+model OrderEvent {
+  id            String   @id @default(uuid())
+  orderId       String
+  fromState     String
+  toState       String
+  triggeredById String
+  note          String?
+  createdAt     DateTime @default(now())
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [triggeredById], references: [id])
 }
 
 model Dispute {
@@ -231,4 +252,20 @@ model AuditLog {
   details   String   // JSON string
   ipAddress String?
   createdAt DateTime @default(now())
+}
+
+model Setting {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TodayRateHistory {
+  id           String   @id @default(uuid())
+  rate         Float
+  previousRate Float
+  updatedBy    String   // Admin Telegram ID or Admin User ID
+  updatedAt    DateTime @default(now())
 }
